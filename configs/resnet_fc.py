@@ -183,7 +183,6 @@ train = dict(
             ),
             sampler=dict(
                 type='BalanceSampler',
-                batch_size=batch_size,
                 shuffle=True,
                 oversample=True,
             ),
@@ -199,7 +198,7 @@ train = dict(
                         datasets=train_dataset_st,
                     )
                 ],
-                batch_ratio=[0.5, 0.5],
+                each_batch_size=[batch_size // 2, batch_size // 2],
                 **dataset_params,
             ),
             transform=train_transforms,

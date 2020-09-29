@@ -7,12 +7,12 @@ from .registry import DATASETS
 @DATASETS.register_module
 class ConcatDatasets(_ConcatDataset):
 
-    def __init__(self, datasets: list, batch_ratio: list = None, **kwargs):
+    def __init__(self, datasets: list, each_batch_size: list = None, **kwargs):
         assert isinstance(datasets, list)
         datasets = build_datasets(datasets, default_args=kwargs)
         self.root = ''.join([ds.root for ds in datasets])
         data_range = [len(dataset) for dataset in datasets]
         self.data_range = [sum(data_range[:i]) for i in range(1, len(data_range) + 1)]
-        self.batch_ratio = batch_ratio
+        self.each_batch_size = each_batch_size
 
         super(ConcatDatasets, self).__init__(datasets=datasets)

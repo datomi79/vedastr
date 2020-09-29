@@ -1,6 +1,7 @@
 import copy
 import random
 
+import numpy as np
 from torch.utils.data import Sampler
 
 from .registry import SAMPLER
@@ -23,13 +24,12 @@ class BalanceSampler(Sampler):
                 oversample first. That means downsample will do no effect.
     """
 
-    def __init__(self, dataset, batch_size, shuffle, oversample=False, downsample=False):
+    def __init__(self, dataset, shuffle, oversample=False, downsample=False):
         assert hasattr(dataset, 'data_range')
-        assert hasattr(dataset, 'batch_ratio')
+        assert hasattr(dataset, 'each_batch_size')
         self.dataset = dataset
         self.samples_range = dataset.data_range
-        self.batch_ratio = dataset.batch_ratio
-        self.batch_size = batch_size
+        self.batch_sizes = dataset.each_batch_size
         self.oversample = oversample
         self.downsample = downsample
         self.shuffle = shuffle
@@ -58,31 +58,35 @@ class BalanceSampler(Sampler):
                 if self.shuffle:
                     random.shuffle(temp)
                 indices_.append(temp)
+        per_dataset_len = [len(index) for index in indices_]
+        pratios = [l / s for (l, s) in zip(per_dataset_len, self.batch_sizes)]
+
         if self.oversample:
-            indices_ = self._oversample(indices_)
+            need_len = [int(np.ceil(max(pratios) * size)) for size in self.batch_sizes]
+            indices_ = self._oversample(indices_, need_len)
         if self.downsample:
-            indices_ = self._downsample(indices_)
+            need_len = [int(np.ceil(min(pratios) * size)) for size in self.batch_sizes]
+            indices_ = self._downsample(indices_, need_len)
         return indices_
 
     def __iter__(self):
         indices_ = self._generate_indices_()
-        total_nums = len(self) // self.batch_size
-        sizes = [int(self.batch_size * br) for br in self.batch_ratio]
-        final_index = [total_nums * size for size in sizes]
+        batch_size = np.sum(self.batch_sizes)
+        total_nums = len(self) // batch_size
+        final_index = [total_nums * size for size in self.batch_sizes]
         indices = []
         for idx2 in range(total_nums):
-            for idx3, size in enumerate(sizes):
+            for idx3, size in enumerate(self.batch_sizes):
                 indices += indices_[idx3][idx2 * size:(idx2 + 1) * size]
         for idx4, index in enumerate(final_index):
             indices += indices_[idx4][index:]
         return iter(indices)
 
-    def _oversample(self, indices):
-        max_len = max([len(index) for index in indices])
+    def _oversample(self, indices, need_len):
         result_indices = []
         for idx, index in enumerate(indices):
             current_nums = len(index)
-            need_num = max_len - current_nums
+            need_num = need_len[idx] - current_nums
             total_nums = need_num // current_nums
             mod_nums = need_num % current_nums
             init_index = copy.copy(index)
@@ -93,16 +97,16 @@ class BalanceSampler(Sampler):
                 index += new_index
             index += random.sample(index, mod_nums)
             result_indices.append(index)
-        self._num_samples = max_len * len(indices)
+        self._num_samples = np.sum(need_len)
+
         return result_indices
 
-    def _downsample(self, indices):
-        min_len = min([len(index) for index in indices])
+    def _downsample(self, indices, need_len):
         result_indices = []
         for idx, index in enumerate(indices):
-            index = random.sample(index, min_len)
+            index = random.sample(index, need_len[idx])
             result_indices.append(index)
-        self._num_samples = min_len * len(indices)
+        self._num_samples = np.sum(need_len)
         return result_indices
 
     def __len__(self):
